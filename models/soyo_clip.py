@@ -3,7 +3,7 @@ import torch.nn as nn
 import copy
 
 from models.clip.prompt_learner import cfgc, load_clip_to_cpu, TextEncoder, PromptLearner
-from utils.class_names import core50_classnames, domainnet_classnames, cddb_classnames
+from utils.class_names import core50_classnames, domainnet_classnames, cddb_classnames, deforest_dil_classnames
 
 
 class soyo_clip(nn.Module):
@@ -29,6 +29,9 @@ class soyo_clip(nn.Module):
         elif args['dataset'] == 'core50':
             dataset_classnames = core50_classnames
             self.class_num = 50
+        elif args['dataset'] == 'deforest_dil':
+            dataset_classnames = deforest_dil_classnames
+            self.class_num = 6
         else:
             raise ValueError('Unknown datasets: {}.'.format(args['dataset']))
         

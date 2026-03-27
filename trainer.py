@@ -68,13 +68,23 @@ def _train(args):
     model = factory.get_model(args['model_name'], args)
     cnn_curve = {'top1': []}
 
+    domain_accuracy_list = []
+
     for task in range(data_manager.nb_tasks):
         model.incremental_train(data_manager)
-        cnn_accy = model.eval_task()
+        cnn_accy, domain_acc = model.eval_task()
         
         logging.info('CNN: {}'.format(cnn_accy['grouped']))
         cnn_curve['top1'].append(cnn_accy['top1'])
         logging.info('CNN top1 curve: {}'.format(cnn_curve['top1']))
+
+        # domain accuracy logging (mirrors CONEC-LoRA style)
+        domain_accuracy_list.append(domain_acc)
+        avg_domain_acc = np.around(np.mean(domain_accuracy_list), decimals=2)
+        logging.info(
+            f'Domain classification accuracies (after each task): '
+            f'{domain_accuracy_list} -> Avg.: {avg_domain_acc}'
+        )
         
         model.after_task()  # domain += 1
 

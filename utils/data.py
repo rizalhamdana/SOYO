@@ -4,6 +4,8 @@ import numpy as np
 from torchvision import datasets, transforms
 from utils.toolkit import split_images_labels
 from utils.datautils.core50data import CORE50
+from utils.class_names import deforest_dil_classnames
+import csv
 
 
 class iData(object):
@@ -175,3 +177,67 @@ class iDomainNet(iData):
         self.test_targets = np.array(train_y)
         print('len of test data', len(self.test_data), len(np.unique(self.test_targets))) # 176743+1
         print('#'*50)
+
+class iDeforestDIL(iData):
+    MANY_SHOT_THRES = 60
+    FEW_SHOT_THRES = 20
+    use_path = True
+
+    train_trsf = [
+        transforms.RandomResizedCrop(224, scale=(0.7, 1.0)),
+        transforms.RandomHorizontalFlip(),
+    ]
+
+    test_trsf = [transforms.Resize((224, 224))]
+    common_trsf = [
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ]
+
+    def __init__(self, args):
+        self.args = args
+        class_order = np.arange(5 * 6).tolist()
+        self.class_order = class_order
+        self.cls_num = 6
+        self.domain_order = args["order"]
+        self.domain_names = self.get_domain_names()
+        print(self.domain_names)
+
+    def get_domain_names(self):
+        if self.domain_order == 1:
+            return ["amazon_sa", "andean_sa", "southern_cone_sa", "mainland_sea", "insular_sea"]
+        elif self.domain_order == 2:
+            return ["andean_sa", "amazon_sa", "southern_cone_sa", "insular_sea", "mainland_sea"]
+        elif self.domain_order == 3:
+            return ["insular_sea", "mainland_sea", "andean_sa", "amazon_sa", "southern_cone_sa"]
+        elif self.domain_order == 4:
+            return ["southern_cone_sa", "insular_sea",  "andean_sa", "mainland_sea", "amazon_sa"]
+        elif self.domain_order == 5:
+            return ["insular_sea", "southern_cone_sa", "andean_sa", "amazon_sa", "mainland_sea"]
+
+    def download_data(self):
+        self.image_list_root = self.args["data_path"]
+        reversed_data = {name: index for index, name in deforest_dil_classnames.items()}
+        train_x, train_y = [], []
+        test_x, test_y = [], []
+        with open(os.path.join("utils/datautils", "deforest_dil.csv"), "r") as f:
+            csv_reader = csv.reader(f)
+            header = next(csv_reader)
+            # print(header)
+            for row in csv_reader:
+                domain_type = row[0]
+                data_path = row[2]
+                cls_name = os.path.basename(os.path.dirname(data_path))
+                data_type = row[3]
+                cls_id = reversed_data[cls_name]
+                domain_id = self.domain_names.index(domain_type)
+                absulute_path = os.path.join(self.image_list_root, data_path)
+                if data_type == "train":
+                    train_x.append(absulute_path)
+                    train_y.append(cls_id + domain_id * 6)
+                else:
+                    test_x.append(absulute_path)
+                    test_y.append(cls_id + domain_id * 6)
+        self.train_data = np.array(train_x)
+        self.train_targets = np.array(train_y)
+        self.test_data = np.array(test_x)
+        self.test_targets = np.array(test_y)

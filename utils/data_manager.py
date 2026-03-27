@@ -3,7 +3,9 @@ import numpy as np
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
-from utils.data import iGanFake, iCore50, iDomainNet
+from utils.data import iGanFake, iCore50, iDomainNet, iDeforestDIL
+import rasterio
+import torch
 
 
 class DataManager(object):
@@ -173,9 +175,23 @@ class DummyDataset(Dataset):
     def __len__(self):
         return len(self.images)
 
+    @staticmethod
+    def tif_loader(path):
+        path = str(path)  # handle np.str_
+        with rasterio.open(path) as src:
+            img = src.read().astype(np.float32)  # (3, H, W), [0, 1] from GEE
+            nodata_mask = np.all(img == 0.0, axis=0)
+            if nodata_mask.mean() > 0.1:
+                raise ValueError(f"Excessive nodata ({nodata_mask.mean():.1%}) in {path}")
+            return torch.from_numpy(img)  # (3, H, W) float32
+
     def __getitem__(self, idx):
         if self.use_path:
-            image = self.trsf(pil_loader(self.images[idx]))
+            path = str(self.images[idx])          # str() handles np.str_ type
+            if path.endswith('.tif') or path.endswith('.tiff'):
+                image = self.trsf(DummyDataset.tif_loader(path))
+            else:
+                image = self.trsf(pil_loader(path))
         else:
             image = self.trsf(Image.fromarray(self.images[idx]))
         label = self.labels[idx]
@@ -195,6 +211,8 @@ def _get_idata(dataset_name, args=None):
         return iCore50(args)
     elif name == 'domainnet':
         return iDomainNet(args)
+    elif name == "deforest_dil":
+        return iDeforestDIL(args)
     else:
         raise NotImplementedError('Unknown dataset {}.'.format(dataset_name))
 

@@ -53,22 +53,39 @@ def _create_vision_transformer(variant, pretrained=False, **kwargs):
     if kwargs.get('features_only', None):
         raise RuntimeError('features_only not implemented for Vision Transformer models.')
 
-    # NOTE this extra code to support handling of repr size for in21k pretrained models
-    # pretrained_cfg = resolve_pretrained_cfg(variant, kwargs=kwargs)
-    pretrained_cfg = resolve_pretrained_cfg(variant)
-    default_num_classes = pretrained_cfg['num_classes']
-    num_classes = kwargs.get('num_classes', default_num_classes)
-    repr_size = kwargs.pop('representation_size', None)
-    if repr_size is not None and num_classes != default_num_classes:
-        repr_size = None
+    print("[DEBUG] kwargs received:", list(kwargs.keys()))  # add this
+
+    kwargs.pop('pretrained_cfg', None)
+    kwargs.pop('representation_size', None)
+    kwargs.pop('pretrained_filter_fn', None)
+
+    print("[DEBUG] kwargs after pop:", list(kwargs.keys()))  # and this
 
     model = build_model_with_cfg(
-        ViT_Prompts, variant, pretrained,
-        pretrained_cfg=pretrained_cfg,
-        representation_size=repr_size,
-        pretrained_filter_fn=checkpoint_filter_fn,
-        pretrained_custom_load='npz' in pretrained_cfg['url'],
+        ViT_Prompts, variant, False,
         **kwargs)
+
+    if pretrained:
+        import os
+        import torch
+        from huggingface_hub import hf_hub_download
+
+        cache_path = os.path.expanduser('~/.cache/torch/hub/checkpoints/vit_b16_augreg_in21k_ft_in1k.pth')
+        if not os.path.exists(cache_path):
+            print("[soyo_vit] Downloading ViT-B/16 weights from HuggingFace...")
+            downloaded = hf_hub_download(
+                repo_id='timm/vit_base_patch16_224.augreg2_in21k_ft_in1k',
+                filename='pytorch_model.bin'
+            )
+            state_dict = torch.load(downloaded, map_location='cpu', weights_only=True)
+            torch.save(state_dict, cache_path)
+            print(f"[soyo_vit] Cached to {cache_path}")
+        else:
+            state_dict = torch.load(cache_path, map_location='cpu', weights_only=True)
+
+        missing, unexpected = model.load_state_dict(state_dict, strict=False)
+        print(f"[soyo_vit] Pretrained loaded — missing: {len(missing)}, unexpected: {len(unexpected)}")
+
     return model
 
 
@@ -88,6 +105,8 @@ class soyo_vit(nn.Module):
             self.class_num = 345
         elif args['dataset'] == 'core50':
             self.class_num = 50
+        elif args['dataset'] == 'deforest_dil':
+            self.class_num = 6
         else:
             raise ValueError('Unknown datasets: {}.'.format(args['dataset']))
         

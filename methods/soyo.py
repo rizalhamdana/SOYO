@@ -299,15 +299,18 @@ class SOYO(BaseLearner):
 
 
     def eval_task(self):
-        y_pred, y_true = self._eval_cnn(self.test_loader) # [N, topk], [N]
+        y_pred, y_true, domain_acc = self._eval_cnn(self.test_loader) # [N, topk], [N]
         cnn_accy = self._evaluate(y_pred, y_true)
 
-        return cnn_accy
+        return cnn_accy, domain_acc
 
 
     def _eval_cnn(self, loader):
         self._network.eval()
         y_pred, y_true = [], []
+
+        # Add these for domain accuracy
+        domain_correct, domain_total = 0, 0
         
         for _, (_, inputs, targets) in enumerate(tqdm(loader)):
             inputs = inputs.to(self._device)
@@ -322,6 +325,13 @@ class SOYO(BaseLearner):
                     feature = self._network.extract_vector(inputs).to(torch.float32)
                 domain_logits = self.soyo_network(feature)
                 selection = torch.max(domain_logits, dim=1)[1]
+
+                # Ground truth domain label — same derivation as in compress_train_resample
+                domain_targets = targets // self.class_num
+                
+                # Domain routing accuracy
+                domain_correct += selection.eq(domain_targets).cpu().sum()
+                domain_total += len(targets)
                 
                 # forward
                 if isinstance(self._network, nn.DataParallel):
@@ -332,8 +342,11 @@ class SOYO(BaseLearner):
             predicts = torch.topk(outputs['logits'], k=self.topk, dim=1, largest=True, sorted=True)[1]  # [bs, topk]
             y_pred.append(predicts.cpu().numpy())   # [bs, topk]
             y_true.append(targets.cpu().numpy())    # [bs]
+
+        domain_acc = np.around(domain_correct.item() * 100 / domain_total, decimals=2)
+        logging.info(f'Domain routing accuracy on test set: {domain_acc:.2f}%')
         
-        return np.concatenate(y_pred), np.concatenate(y_true)   # [N, topk], [N]
+        return np.concatenate(y_pred), np.concatenate(y_true), domain_acc   # [N, topk], [N], domain_acc
 
 
     def _evaluate(self, y_pred, y_true):

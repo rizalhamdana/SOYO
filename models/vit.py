@@ -642,11 +642,20 @@ def _create_vision_transformer(variant, pretrained=False, **kwargs):
     # NOTE this extra code to support handling of repr size for in21k pretrained models
     # pretrained_cfg = resolve_pretrained_cfg(variant, kwargs=kwargs)
     pretrained_cfg = resolve_pretrained_cfg(variant)
-    default_num_classes = pretrained_cfg['num_classes']
+    
+    # Handle both old dict format and new PretrainedCfg object
+    if isinstance(pretrained_cfg, dict):
+        pretrained_num_classes = pretrained_cfg.get("num_classes", 1000)
+        url = pretrained_cfg.get("url", "")
+    else:
+        pretrained_num_classes = pretrained_cfg.num_classes
+        url = pretrained_cfg.url if isinstance(pretrained_cfg.url, str) else ""
+
+    default_num_classes = pretrained_num_classes
     num_classes = kwargs.get('num_classes', default_num_classes)
     repr_size = kwargs.pop('representation_size', None)
     if repr_size is not None and num_classes != default_num_classes:
-        # Remove representation layer if fine-tuning. This may not always be the desired action,
+         # Remove representation layer if fine-tuning. This may not always be the desired action,
         # but I feel better than doing nothing by default for fine-tuning. Perhaps a better interface?
         _logger.warning("Removing representation layer for fine-tuning.")
         repr_size = None
@@ -656,7 +665,7 @@ def _create_vision_transformer(variant, pretrained=False, **kwargs):
         pretrained_cfg=pretrained_cfg,
         representation_size=repr_size,
         pretrained_filter_fn=checkpoint_filter_fn,
-        pretrained_custom_load='npz' in pretrained_cfg['url'],
+        # pretrained_custom_load removed — not supported in newer timm
         **kwargs)
     return model
 
